@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// --- Core Models for Sync & Auth ---
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  containers Container[]
+  widgets    Widget[]
+  habits     Habit[]
+  finances   Transaction[]
+  notes      Note[]
+  events     Event[]
+}
+
+// --- Infinite Canvas / UI Architecture ---
+
+model Container {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  title     String
+  type      String   // "dashboard", "canvas", "page"
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  widgets   Widget[]
+}
+
+model Widget {
+  id          String   @id @default(cuid())
+  containerId String
+  container   Container @relation(fields: [containerId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  type        String   // "note", "chart", "task_list", "habit_tracker", "calendar"
+  
+  // Visual Position & Settings (JSON)
+  // Stores: x, y, width, height, color, etc.
+  position    String   // JSON stringified { x: 0, y: 0 }
+  settings    String?  // JSON stringified { title: "My Chart", viewMode: "bar" }
+
+  // Data Link (Single Source of Truth)
+  // Points to a specific Habit, Transaction, or generic Note ID
+  dataSourceId String? 
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+}
+
+// --- Feature Entities (Data) ---
+
+model Note {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  
+  title       String
+  content     String?   // Markdown or HTML
+  color       String    @default("#fff9c4")
+  tags        String?   // JSON stringified array
+  
+  // Contextual linking
+  resourceType String?  // "year", "month", "week", "day"
+  resourceDate DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+}
+
+model Habit {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  
+  title       String
+  description String?
+  frequency   String    // "daily", "weekly", "custom"
+  completedDates String? // JSON stringified array of dates ["2023-10-01", ...]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+}
+
+model Transaction {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  
+  amount      Float
+  type        String    // "income", "expense"
+  category    String
+  date        DateTime
+  description String?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  title       String
+  start       DateTime
+  end         DateTime
+  allDay      Boolean  @default(false)
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

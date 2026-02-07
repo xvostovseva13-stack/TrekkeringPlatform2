@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap');
+
+:root {
+  /* 1. Color Palette: Indigo/Violet Primary */
+  --bs-primary: #6366f1; /* Indigo 500 */
+  --bs-primary-rgb: 99, 102, 241;
+  --bs-secondary: #64748b; /* Slate 500 */
+  --bs-success: #10b981; /* Emerald 500 */
+  --bs-info: #0ea5e9; /* Sky 500 */
+  --bs-warning: #f59e0b; /* Amber 500 */
+  --bs-danger: #ef4444; /* Red 500 */
+  --bs-light: #f8fafc; /* Slate 50 */
+  --bs-dark: #1e293b; /* Slate 800 */
+
+  /* Backgrounds */
+  --app-bg: #f1f5f9; /* Slate 100 - Main App Background */
+  --surface-bg: #ffffff; /* White - Card/Sidebar Background */
+  --border-color: #e2e8f0; /* Slate 200 */
+
+  /* 2. Shape & Geometry */
+  --bs-border-radius: 9px;
+  --bs-border-radius-lg: 12px;
+  --bs-border-radius-sm: 6px;
+
+  /* Shadows (Soft) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* 5. Typography */
+  --bs-body-font-family: 'Exo', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background-color: var(--app-bg);
+  color: var(--bs-dark);
+  font-family: var(--bs-body-font-family);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sidebar Custom Styles */
+.sidebar-container {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  background-color: var(--surface-bg);
+}
+
+.sidebar-nav-link {
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.sidebar-nav-link:hover:not(.active) {
+  background-color: #f1f5f9;
+  color: var(--bs-primary) !important;
+}
+
+.sidebar-nav-link.active {
+  background-color: var(--bs-primary) !important;
+  color: white !important;
+  box-shadow: var(--shadow-md);
+}
+
+.hover-bg-light:hover {
+  background-color: var(--bs-light);
+}
+
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+.transition-opacity {
+  transition: opacity 0.2s ease;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
