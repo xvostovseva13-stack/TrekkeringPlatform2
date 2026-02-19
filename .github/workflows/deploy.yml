@@ -1,0 +1,57 @@
+name: Deploy Web to GitHub Pages
+
+on:
+  # Запуск при пуше в ветку main
+  push:
+    branches: ["main"]
+
+  # Позволяет запустить вручную из вкладки Actions
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Разрешаем только один деплой одновременно
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  # Шаг 1: Сборка
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Core (Web)
+        run: npm run build:core
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Указываем путь к папке, где лежит результат сборки веб-версии
+          path: './packages/core/dist'
+
+  # Шаг 2: Деплой
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
