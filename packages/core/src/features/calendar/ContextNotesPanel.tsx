@@ -1,22 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Form, CloseButton } from 'react-bootstrap';
-import { HiOutlineTrash, HiOutlineMapPin } from 'react-icons/hi2';
+import { HiOutlineTrash } from 'react-icons/hi2';
+import dayjs from 'dayjs';
 import { handleNoteKeyDown } from '../../utils/editorUtils';
 
 const COLORS = [
-  '#fff9c4', // Yellow
-  '#d1e7dd', // Green
-  '#cff4fc', // Blue
-  '#f8d7da', // Red/Pink
-  '#e2e3e5', // Grey
-  '#fff3cd', // Orange
+  '#fff9c4', '#d1e7dd', '#cff4fc', '#f8d7da', '#e2e3e5', '#fff3cd'
 ];
 
 interface ContextNotesPanelProps {
   notes: any[];
   onUpdateNote: (note: any) => Promise<void>;
   onDeleteNote: (id: string) => Promise<void>;
-  title: string; // "Notes for January", etc.
+  title: string;
 }
 
 const ContextNotesPanel = ({ notes, onUpdateNote, onDeleteNote, title }: ContextNotesPanelProps) => {
@@ -27,7 +23,12 @@ const ContextNotesPanel = ({ notes, onUpdateNote, onDeleteNote, title }: Context
   const [editContent, setEditContent] = useState('');
   const [editColor, setEditColor] = useState(COLORS[0]);
 
-  // Sync editor with expanded note
+  // Group notes
+  const yearNotes = notes.filter(n => n.resourceType === 'year');
+  const monthNotes = notes.filter(n => n.resourceType === 'month');
+  const dayNotes = notes.filter(n => n.resourceType === 'day');
+
+  // Sync editor
   useEffect(() => {
     if (expandedId) {
       const note = notes.find(n => n.id === expandedId);
@@ -58,44 +59,75 @@ const ContextNotesPanel = ({ notes, onUpdateNote, onDeleteNote, title }: Context
     }
   };
 
+  const renderNoteCard = (note: any, label?: string) => (
+    <Card 
+        key={note.id}
+        className="border-0 shadow-sm cursor-pointer hover-shadow transition-all"
+        style={{ backgroundColor: note.color || '#fff9c4', cursor: 'pointer' }}
+        onDoubleClick={() => setExpandedId(note.id)}
+    >
+        <Card.Body className="p-3">
+            <div className="d-flex justify-content-between align-items-start mb-1">
+                <div className="fw-bold text-truncate me-2">{note.title}</div>
+                {label && <span className="badge bg-dark bg-opacity-10 text-dark small" style={{ fontSize: '0.65rem' }}>{label}</span>}
+            </div>
+            <div 
+                className="text-muted small" 
+                style={{ 
+                    display: '-webkit-box', 
+                    WebkitLineClamp: 3, 
+                    WebkitBoxOrient: 'vertical', 
+                    overflow: 'hidden' 
+                }}
+            >
+                {note.content}
+            </div>
+        </Card.Body>
+    </Card>
+  );
+
   return (
-    <div className="d-flex flex-column h-100 bg-white border-end position-relative" style={{ width: '280px', minWidth: '280px' }}>
+    <div className="d-flex flex-column h-100 bg-white border-end position-relative" style={{ width: '300px', minWidth: '300px' }}>
       <div className="p-3 border-bottom bg-light">
         <h6 className="m-0 text-muted fw-bold text-uppercase small">{title}</h6>
       </div>
       
-      <div className="flex-grow-1 overflow-auto p-3 d-flex flex-column gap-3">
+      <div className="flex-grow-1 overflow-auto p-3">
         {notes.length === 0 && (
             <div className="text-center text-muted small mt-5">
-                No notes for this period.
-                <br/>
-                Click the icon above to add one.
+                No notes found for this year.
             </div>
         )}
-        
-        {notes.map(note => (
-          <Card 
-            key={note.id}
-            className="border-0 shadow-sm cursor-pointer hover-shadow transition-all"
-            style={{ backgroundColor: note.color || '#fff9c4', cursor: 'pointer' }}
-            onDoubleClick={() => setExpandedId(note.id)}
-          >
-            <Card.Body className="p-3">
-              <div className="fw-bold text-truncate mb-1">{note.title}</div>
-              <div 
-                className="text-muted small" 
-                style={{ 
-                   display: '-webkit-box', 
-                   WebkitLineClamp: 3, 
-                   WebkitBoxOrient: 'vertical', 
-                   overflow: 'hidden' 
-                }}
-              >
-                {note.content}
-              </div>
-            </Card.Body>
-          </Card>
-        ))}
+
+        {/* Year Section */}
+        {yearNotes.length > 0 && (
+            <div className="mb-4">
+                <h6 className="text-primary fw-bold small text-uppercase mb-2 ps-1 border-bottom pb-1">Yearly Goals</h6>
+                <div className="d-flex flex-column gap-2">
+                    {yearNotes.map(n => renderNoteCard(n, dayjs(n.resourceDate).format('YYYY')))}
+                </div>
+            </div>
+        )}
+
+        {/* Month Section */}
+        {monthNotes.length > 0 && (
+            <div className="mb-4">
+                <h6 className="text-primary fw-bold small text-uppercase mb-2 ps-1 border-bottom pb-1">Monthly Notes</h6>
+                <div className="d-flex flex-column gap-2">
+                    {monthNotes.map(n => renderNoteCard(n, dayjs(n.resourceDate).format('MMMM')))}
+                </div>
+            </div>
+        )}
+
+        {/* Day Section */}
+        {dayNotes.length > 0 && (
+            <div className="mb-4">
+                <h6 className="text-primary fw-bold small text-uppercase mb-2 ps-1 border-bottom pb-1">Daily Log</h6>
+                <div className="d-flex flex-column gap-2">
+                    {dayNotes.map(n => renderNoteCard(n, dayjs(n.resourceDate).format('D MMM')))}
+                </div>
+            </div>
+        )}
       </div>
 
       {/* Expanded Editor Overlay */}

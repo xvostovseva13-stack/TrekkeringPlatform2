@@ -87,3 +87,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* --- React Flow Handle UX Improvement --- */
+/* Increase the hit area (hitbox) of handles using an invisible pseudo-element */
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;  /* Hitbox width */
+  height: 24px; /* Hitbox height */
+  background: transparent;
+  border-radius: 50%;
+  z-index: -1; /* Ensure it doesn't block clicks on the handle itself if needed, though handles are usually small */
+  pointer-events: all; /* Ensure it captures mouse events */
+}
+
+/* --- Calendar Customization --- */
+.rbc-day-bg {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.rbc-day-bg:hover {
+  background-color: rgba(99, 102, 241, 0.1) !important; /* Indigo with opacity */
+}
+.rbc-today {
+  background-color: rgba(99, 102, 241, 0.05) !important;
+}

@@ -21,7 +21,11 @@
     ],
     "extraResources": [
       "trekker.db",
-      "prisma/**/*",
+      {
+        "from": "prisma",
+        "to": "prisma",
+        "filter": ["**/*"]
+      },
       {
         "from": "../../node_modules/.prisma",
         "to": "node_modules/.prisma"

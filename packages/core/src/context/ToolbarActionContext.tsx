@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-type ActionHandler = () => void;
+type ActionHandler = (color?: string) => void;
 
 interface ToolbarActionContextType {
   onNoteClick: ActionHandler | null;

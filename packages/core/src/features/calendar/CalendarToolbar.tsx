@@ -1,8 +1,8 @@
 import { Button, ButtonGroup } from 'react-bootstrap';
-import { HiOutlineDocumentText, HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
+import { HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
 import dayjs from 'dayjs';
 
-type ViewType = 'year' | 'month';
+type ViewType = 'year' | 'month' | 'day';
 
 interface CalendarToolbarProps {
   date: Date;
@@ -18,6 +18,7 @@ const CalendarToolbar = ({ date, view, onViewChange, onNavigate }: CalendarToolb
     switch (view) {
       case 'year': return d.format('YYYY');
       case 'month': return d.format('MMMM YYYY');
+      case 'day': return d.format('D MMM YYYY');
       default: return '';
     }
   };
@@ -42,7 +43,7 @@ const CalendarToolbar = ({ date, view, onViewChange, onNavigate }: CalendarToolb
 
       {/* Right: View Switcher */}
       <div className="d-flex gap-1">
-        {(['year', 'month'] as ViewType[]).map(v => (
+        {(['year', 'month', 'day'] as ViewType[]).map(v => (
             <Button
                 key={v}
                 variant={view === v ? 'primary' : 'ghost'}

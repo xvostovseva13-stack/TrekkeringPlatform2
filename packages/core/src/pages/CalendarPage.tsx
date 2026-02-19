@@ -7,16 +7,17 @@ import BigCalendar from '../features/calendar/BigCalendar';
 import CalendarToolbar from '../features/calendar/CalendarToolbar';
 import ContextNotesPanel from '../features/calendar/ContextNotesPanel';
 import YearView from '../features/calendar/YearView';
-import { useToolbarActions } from '../context/ToolbarActionContext';
+import DayView from '../features/calendar/DayView';
+import { EventModal } from '../features/calendar/EventModal';
+import { emitTrekkerEvent, useTrekkerEvent } from '../utils/eventBus';
 
-type ViewType = 'year' | 'month';
+type ViewType = 'year' | 'month' | 'day';
 
 const COLORS = [
   '#fff9c4', '#d1e7dd', '#cff4fc', '#f8d7da', '#e2e3e5', '#fff3cd',
 ];
 
 const CalendarPage = () => {
-  const { setNoteAction } = useToolbarActions();
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState<ViewType>('month');
   
@@ -31,14 +32,8 @@ const CalendarPage = () => {
 
   // Event Modal State
   const [showEventModal, setShowEventModal] = useState(false);
-  const [newEventTitle, setNewEventTitle] = useState('');
-  const [newEventSlot, setNewEventSlot] = useState<SlotInfo | null>(null);
-
-  // Register Global Toolbar Action
-  useEffect(() => {
-    setNoteAction(() => () => setShowNoteModal(true));
-    return () => setNoteAction(null);
-  }, [setNoteAction]);
+  const [editingEvent, setEditingEvent] = useState<any | null>(null);
+  const [initialEventDate, setInitialEventDate] = useState<Date | undefined>(undefined);
 
   // --- Data Loading ---
 
@@ -61,25 +56,36 @@ const CalendarPage = () => {
   const fetchNotes = useCallback(async () => {
     if (!window.electron) return;
     
-    // Calculate resourceDate based on current View + Date
-    // e.g., if view='month', resourceDate = start of that month
-    const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view).toDate();
+    // Always fetch notes for the whole year to display in the categorized panel
+    const startOfYear = dayjs(date).startOf('year').toDate();
+    const endOfYear = dayjs(date).endOf('year').toDate();
     
     try {
       const data = await window.electron.db.getNotes({
-        resourceType: view,
-        resourceDate: resourceDate
+        start: startOfYear,
+        end: endOfYear
       });
       setNotes(data);
     } catch (e) {
       console.error("Failed to load notes", e);
     }
-  }, [date, view]);
+  }, [date]);
 
   useEffect(() => {
     fetchEvents();
     fetchNotes();
   }, [fetchEvents, fetchNotes]);
+
+  // --- Event Bus Subscriptions ---
+  useTrekkerEvent('EVENT_CHANGED', () => {
+    console.log("CALENDAR: Received EVENT_CHANGED, reloading...");
+    fetchEvents();
+  });
+
+  useTrekkerEvent('NOTE_CHANGED', () => {
+    console.log("CALENDAR: Received NOTE_CHANGED, reloading...");
+    fetchNotes();
+  });
 
   // --- Handlers ---
 
@@ -89,8 +95,8 @@ const CalendarPage = () => {
       newDate = dayjs();
     } else {
       const method = action === 'NEXT' ? 'add' : 'subtract';
-      // Navigate by the current unit
-      newDate = newDate[method](1, view === 'year' ? 'year' : view);
+      const unit = view === 'year' ? 'year' : view === 'month' ? 'month' : 'day';
+      newDate = newDate[method](1, unit);
     }
     setDate(newDate.toDate());
   };
@@ -103,7 +109,7 @@ const CalendarPage = () => {
   const handleCreateNote = async () => {
     if (!newNoteTitle || !window.electron) return;
     
-    const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view).toDate();
+    const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view === 'month' ? 'month' : 'day').toDate();
     
     try {
       await window.electron.db.createNote({
@@ -113,10 +119,11 @@ const CalendarPage = () => {
         resourceType: view,
         resourceDate: resourceDate
       });
+      emitTrekkerEvent('NOTE_CHANGED');
       setShowNoteModal(false);
       setNewNoteTitle('');
       setNewNoteContent('');
-      fetchNotes();
+      // fetchNotes(); // Handled by event bus
     } catch (e) {
       console.error(e);
       alert('Failed to create note');
@@ -126,39 +133,114 @@ const CalendarPage = () => {
   const handleUpdateNote = async (note: any) => {
     if (!window.electron) return;
     await window.electron.db.updateNote(note);
-    fetchNotes();
+    emitTrekkerEvent('NOTE_CHANGED');
+    // fetchNotes(); // Handled by event bus
   };
 
   const handleDeleteNote = async (id: string) => {
     if (!window.electron) return;
     await window.electron.db.deleteNote({ id });
-    fetchNotes();
+    emitTrekkerEvent('NOTE_CHANGED');
+    // fetchNotes(); // Handled by event bus
   };
 
-  // Create Calendar Event
+  // Calendar Event Logic
+  
   const handleSelectSlot = (slotInfo: SlotInfo) => {
-    setNewEventSlot(slotInfo);
-    setNewEventTitle('');
+    if (view === 'month') {
+        // Navigate to Day View on click
+        setDate(slotInfo.start);
+        setView('day');
+    } else {
+        // Open Modal for New Event (Week/Day big calendar view)
+        setEditingEvent(null);
+        setInitialEventDate(slotInfo.start);
+        setShowEventModal(true);
+    }
+  };
+
+  const handleEditEvent = (event: any) => {
+    setEditingEvent(event);
     setShowEventModal(true);
   };
 
-  const handleCreateEvent = async () => {
-    if (!newEventTitle || !newEventSlot || !window.electron) return;
+  const handleSaveEvent = async (data: any) => {
+    if (!window.electron) return;
 
     try {
-        await window.electron.db.createEvent({
-            title: newEventTitle,
-            start: newEventSlot.start,
-            end: newEventSlot.end,
-            allDay: newEventSlot.action === 'doubleClick' || newEventSlot.slots.length === 1
-        });
+        if (data.id) {
+            await window.electron.db.updateEvent(data);
+        } else {
+            await window.electron.db.createEvent(data);
+        }
+        emitTrekkerEvent('EVENT_CHANGED');
         setShowEventModal(false);
-        fetchEvents();
+        // fetchEvents(); // Handled by event bus
     } catch (e) {
         console.error(e);
-        alert('Failed to create event');
+        alert('Failed to save event');
     }
   };
+  
+  // Helper for DayView add button
+  const handleAddEventFromDayView = (start: Date) => {
+    setEditingEvent(null);
+    setInitialEventDate(start);
+    setShowEventModal(true);
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    if (!window.electron) return;
+    try {
+        await window.electron.db.deleteEvent({ id });
+        emitTrekkerEvent('EVENT_CHANGED');
+        // fetchEvents(); // Handled by event bus
+    } catch (e) {
+        console.error("Failed to delete event", e);
+    }
+  };
+
+  // DnD Listener
+  useEffect(() => {
+    const handleDrop = async (e: CustomEvent) => {
+      const { type, data } = e.detail;
+      const electron = window.electron;
+      if (!electron) return;
+
+      if (type === 'event') {
+        console.log("CALENDAR: Event dropped!");
+        // Default to current time or start of day depending on view
+        const start = view === 'day' ? dayjs(date).hour(12).minute(0).toDate() : dayjs(date).startOf('day').toDate();
+        
+        handleAddEventFromDayView(start);
+      } else if (type === 'note') {
+        console.log("CALENDAR: Note dropped!");
+        // Create a note linked to the current view context
+        // If in Month view -> link to that month? Or day?
+        // Let's assume drop means "add to current view context".
+        // If view is Day -> add to Day. If Month -> add to Month.
+        
+        const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view === 'month' ? 'month' : 'day').toDate();
+        
+        try {
+            await electron.db.createNote({
+                title: 'New Note',
+                content: '',
+                color: data.color || '#fff9c4',
+                resourceType: view,
+                resourceDate: resourceDate
+            });
+            emitTrekkerEvent('NOTE_CHANGED');
+            // fetchNotes(); // Handled by event bus
+        } catch (err) {
+            console.error("Failed to create dropped note", err);
+        }
+      }
+    };
+
+    window.addEventListener('widget-drop', handleDrop as unknown as EventListener);
+    return () => window.removeEventListener('widget-drop', handleDrop as unknown as EventListener);
+  }, [date, view, fetchNotes]); // Added fetchNotes to deps
 
   return (
     <div className="h-100 d-flex flex-column bg-white">
@@ -175,26 +257,35 @@ const CalendarPage = () => {
         {/* Context Notes Panel */}
         <ContextNotesPanel 
             notes={notes}
-            title={`Notes for ${view === 'year' ? dayjs(date).format('YYYY') : dayjs(date).format('MMMM')}`}
+            title={`Notes for ${dayjs(date).format('YYYY')}`}
             onUpdateNote={handleUpdateNote}
             onDeleteNote={handleDeleteNote}
         />
 
         {/* Calendar View */}
-        <div className="flex-grow-1 p-3 overflow-auto bg-light">
+        <div className="flex-grow-1 p-3 bg-light overflow-hidden">
            {view === 'year' ? (
-             <YearView 
-                date={date} 
-                events={events} // We can pass events to show dots
-                onMonthClick={(d) => {
-                    setDate(d);
-                    setView('month');
-                }}
+             <div className="h-100 overflow-auto">
+                <YearView 
+                    date={date} 
+                    events={events} 
+                    onMonthClick={(d) => {
+                        setDate(d);
+                        setView('month');
+                    }}
+                />
+             </div>
+           ) : view === 'day' ? (
+             <DayView 
+                date={date}
+                events={events}
+                onAddEvent={handleAddEventFromDayView}
+                onEditEvent={handleEditEvent}
              />
            ) : (
              <BigCalendar 
                 date={date}
-                view={view as View} // Cast safely as we filtered out 'year'
+                view={view as View} 
                 events={events}
                 onNavigate={(d) => setDate(d)}
                 onView={(v) => setView(v as ViewType)}
@@ -253,29 +344,15 @@ const CalendarPage = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Add Event Modal */}
-      <Modal show={showEventModal} onHide={() => setShowEventModal(false)} centered size="sm">
-        <Modal.Header closeButton className="border-0 pb-0">
-            <Modal.Title className="fs-5 text-muted">New Event</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-            <Form onSubmit={(e) => { e.preventDefault(); handleCreateEvent(); }}>
-                <Form.Group>
-                    <Form.Control 
-                        placeholder="Event Title"
-                        autoFocus
-                        value={newEventTitle}
-                        onChange={e => setNewEventTitle(e.target.value)}
-                        className="fw-bold"
-                    />
-                </Form.Group>
-            </Form>
-        </Modal.Body>
-        <Modal.Footer className="border-0 pt-0">
-            <Button variant="secondary" onClick={() => setShowEventModal(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleCreateEvent} disabled={!newEventTitle}>Save</Button>
-        </Modal.Footer>
-      </Modal>
+      {/* Unified Event Modal */}
+      <EventModal 
+        show={showEventModal}
+        onHide={() => setShowEventModal(false)}
+        onSave={handleSaveEvent}
+        onDelete={handleDeleteEvent}
+        event={editingEvent}
+        initialDate={initialEventDate}
+      />
     </div>
   );
 };

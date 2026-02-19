@@ -14,8 +14,27 @@ interface BigCalendarProps {
 }
 
 const BigCalendar = ({ date, view, events, onNavigate, onView, onSelectSlot }: BigCalendarProps) => {
+  
+  const eventStyleGetter = (event: any) => {
+    const backgroundColor = event.color || '#6366f1'; // Default Indigo
+    // Determine text color for contrast (simple logic)
+    const isLight = ['#fff9c4', '#d1e7dd', '#cff4fc', '#f8d7da', '#e2e3e5', '#fff3cd'].includes(backgroundColor);
+    const color = isLight ? '#000000' : '#ffffff';
+
+    return {
+      style: {
+        backgroundColor,
+        color,
+        border: 'none',
+        borderRadius: '4px',
+        opacity: 0.9,
+        display: 'block'
+      }
+    };
+  };
+
   return (
-    <div style={{ height: '100%', minHeight: '600px' }}>
+    <div className="h-100">
         <Calendar
             localizer={localizer}
             events={events}
@@ -28,7 +47,8 @@ const BigCalendar = ({ date, view, events, onNavigate, onView, onSelectSlot }: B
             view={view}
             onNavigate={onNavigate}
             onView={onView}
-            toolbar={false} // We use our custom toolbar
+            toolbar={false} 
+            eventPropGetter={eventStyleGetter}
         />
     </div>
   );

@@ -5,7 +5,6 @@ import {
   HiOutlineHome,
   HiOutlineMap, 
   HiOutlineCalendar, 
-  HiOutlineBookOpen, 
   HiOutlineCurrencyDollar, 
   HiOutlineTrophy, 
   HiOutlineCheckCircle,

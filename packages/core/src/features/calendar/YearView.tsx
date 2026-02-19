@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import dayjs from 'dayjs';
 import { Row, Col, Card } from 'react-bootstrap';
 
@@ -12,17 +11,9 @@ const YearView = ({ date, events, onMonthClick }: YearViewProps) => {
   const currentYear = dayjs(date).year();
   const months = Array.from({ length: 12 }, (_, i) => dayjs(new Date(currentYear, i, 1)));
 
-  // Helper to check if a day has events
-  const hasEvent = (day: dayjs.Dayjs) => {
-    return events.some(e => {
-       const start = dayjs(e.start || e.resourceDate);
-       return start.isSame(day, 'day');
-    });
-  };
-
   return (
-    <div className="h-100 overflow-auto p-2">
-      <Row className="g-3">
+    <div className="h-100 p-2">
+      <Row className="g-3 h-100">
         {months.map(month => (
           <Col xs={12} sm={6} md={4} lg={3} key={month.format('MMM')}>
             <Card 
@@ -45,20 +36,29 @@ const YearView = ({ date, events, onMonthClick }: YearViewProps) => {
                   {Array.from({ length: month.daysInMonth() }).map((_, i) => {
                     const day = month.date(i + 1);
                     const isToday = day.isSame(dayjs(), 'day');
-                    const hasDot = hasEvent(day);
+                    
+                    // Find events that cover this day
+                    const dayEvents = events.filter(e => {
+                        const start = dayjs(e.start).startOf('day');
+                        const end = dayjs(e.end).endOf('day');
+                        return day.isBetween(start, end, 'day', '[]');
+                    });
+
+                    // Use the color of the first event found, or default
+                    const eventColor = dayEvents.length > 0 ? (dayEvents[0].color || '#6366f1') : null;
                     
                     return (
                       <div 
                         key={i} 
-                        className={`text-center p-1 rounded-circle position-relative ${isToday ? 'bg-primary text-white' : ''}`}
+                        className={`text-center p-1 rounded-circle position-relative`}
+                        style={{
+                            backgroundColor: isToday ? 'var(--bs-primary)' : (eventColor ? `${eventColor}40` : 'transparent'), // 40 = 25% opacity
+                            color: isToday ? 'white' : 'inherit',
+                            cursor: 'pointer'
+                        }}
+                        onClick={() => onMonthClick(day.toDate())}
                       >
                         {i + 1}
-                        {hasDot && !isToday && (
-                          <div 
-                            className="position-absolute translate-middle rounded-circle bg-danger" 
-                            style={{ width: 4, height: 4, bottom: 2, left: '50%' }}
-                          />
-                        )}
                       </div>
                     );
                   })}

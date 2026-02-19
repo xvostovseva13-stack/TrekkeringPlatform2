@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 
 // Disable hardware acceleration to fix cursor rendering issues
 app.disableHardwareAcceleration();
@@ -80,6 +81,98 @@ const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error']
 })
 
+// --- MIGRATION RUNNER ---
+async function runMigrations() {
+  log("Checking for pending migrations...");
+  
+  // Identify migrations directory
+  // In prod: process.resourcesPath/prisma/migrations
+  // In dev: ../../prisma/migrations (relative to main.ts)
+  const migrationsPath = is.dev 
+    ? join(__dirname, '../../prisma/migrations')
+    : join(process.resourcesPath, 'prisma/migrations');
+    
+  log(`Looking for migrations at: ${migrationsPath}`);
+
+  if (!fs.existsSync(migrationsPath)) {
+    log(`Migrations directory NOT FOUND at: ${migrationsPath}`);
+    // Diagnostic listing of resources path
+    if (!is.dev) {
+        try {
+            log(`Contents of resources path (${process.resourcesPath}):`);
+            fs.readdirSync(process.resourcesPath).forEach(f => log(` - ${f}`));
+            
+            const prismaPath = join(process.resourcesPath, 'prisma');
+            if (fs.existsSync(prismaPath)) {
+                log(`Contents of prisma path (${prismaPath}):`);
+                fs.readdirSync(prismaPath).forEach(f => log(` - ${f}`));
+            }
+        } catch (e) {
+            log(`Failed to list directory contents: ${e}`);
+        }
+    }
+    return;
+  }
+
+  // Get list of migration folders (sorted by name/timestamp)
+  const migrationFolders = fs.readdirSync(migrationsPath)
+    .filter(f => fs.statSync(join(migrationsPath, f)).isDirectory())
+    .sort();
+  
+  log(`Found migration folders: ${migrationFolders.join(', ')}`);
+
+  // Get applied migrations from DB
+  let appliedMigrations: string[] = [];
+  try {
+    const records: any[] = await prisma.$queryRaw`SELECT migration_name FROM _prisma_migrations`;
+    appliedMigrations = records.map(r => r.migration_name);
+    log(`Already applied migrations: ${appliedMigrations.join(', ')}`);
+  } catch (e) {
+    log(`Could not query _prisma_migrations, assuming empty DB or first run. Error: ${e}`);
+  }
+
+  // Apply new migrations
+  for (const migrationName of migrationFolders) {
+    if (!appliedMigrations.includes(migrationName)) {
+      log(`Applying migration: ${migrationName}`);
+      const migrationFile = join(migrationsPath, migrationName, 'migration.sql');
+      
+      if (fs.existsSync(migrationFile)) {
+        const sql = fs.readFileSync(migrationFile, 'utf-8');
+        // Split by semicolon. Note: This is a simple split and might break on complex SQL 
+        // (e.g. semicolons in strings), but standard Prisma migrations are usually clean.
+        const statements = sql.split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+          
+        try {
+          for (const statement of statements) {
+             await prisma.$executeRawUnsafe(statement);
+          }
+          
+          // Mark as applied
+          const id = crypto.randomUUID(); 
+          const checksum = '0'; // Placeholder checksum
+          
+          await prisma.$executeRaw`
+            INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+            VALUES (${id}, ${checksum}, CURRENT_TIMESTAMP, ${migrationName}, '', NULL, CURRENT_TIMESTAMP, ${statements.length})
+          `;
+          
+          log(`Migration ${migrationName} applied successfully.`);
+        } catch (e) {
+          log(`FAILED to apply migration ${migrationName}: ${e}`);
+          dialog.showErrorBox('Migration Error', `Failed to update database schema (Migration: ${migrationName}).\nPlease contact support.\nError: ${e}`);
+          throw e; 
+        }
+      } else {
+         log(`Migration file missing for ${migrationName} at ${migrationFile}`);
+      }
+    }
+  }
+}
+// ------------------------
+
 // Ensure default user exists
 async function ensureUser() {
   log("Ensuring user exists...");
@@ -104,18 +197,57 @@ async function ensureUser() {
 function registerIpcHandlers() {
   log("Registering IPC handlers...");
   // NOTES
-  ipcMain.handle('db:getNotes', async (_, filter?: { resourceType?: string, resourceDate?: Date }) => {
+  ipcMain.handle('db:getNotes', async (_, filter?: { resourceType?: string, resourceDate?: Date, start?: Date, end?: Date }) => {
     const where: any = {};
-    if (filter?.resourceType) {
-      where.resourceType = filter.resourceType;
-    }
-    if (filter?.resourceDate) {
-      where.resourceDate = filter.resourceDate;
+    
+    if (filter?.start && filter?.end) {
+       where.resourceDate = {
+         gte: filter.start,
+         lte: filter.end
+       };
+    } else {
+       if (filter?.resourceType) {
+         where.resourceType = filter.resourceType;
+       }
+       if (filter?.resourceDate) {
+         where.resourceDate = filter.resourceDate;
+       }
     }
 
-    return await prisma.note.findMany({
+    const notes = await prisma.note.findMany({
       where,
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { resourceDate: 'asc' }
+    });
+
+    // Enrich with widget usage info
+    const noteIds = notes.map(n => n.id);
+    const widgets = await prisma.widget.findMany({
+        where: { dataSourceId: { in: noteIds } },
+        include: { container: true }
+    });
+
+    return notes.map(note => {
+        const linkedWidgets = widgets.filter(w => w.dataSourceId === note.id);
+        
+        const usedIn = linkedWidgets.map(w => ({
+            widgetId: w.id,
+            containerType: w.container.type,
+            containerTitle: w.container.title
+        }));
+
+        // Add Calendar link if applicable
+        if (note.resourceDate || note.resourceType) {
+            usedIn.push({
+                widgetId: 'calendar-link',
+                containerType: 'calendar',
+                containerTitle: 'Calendar'
+            });
+        }
+
+        return {
+            ...note,
+            usedIn
+        };
     });
   });
 
@@ -207,6 +339,16 @@ function registerIpcHandlers() {
             data: note // Attach the actual note data
           };
         }
+      } else if (widget.type === 'event' && widget.dataSourceId) {
+        const event = await prisma.event.findUnique({
+          where: { id: widget.dataSourceId }
+        });
+        if (event) {
+          return {
+            ...widget,
+            data: event // Attach the actual event data
+          };
+        }
       }
       return widget;
     }));
@@ -215,6 +357,13 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('db:deleteWidget', async (_, { id }) => {
+    // Delete associated edges too
+    await prisma.edge.deleteMany({
+      where: {
+        OR: [{ source: id }, { target: id }]
+      }
+    });
+
     return await prisma.widget.delete({
       where: { id }
     });
@@ -227,6 +376,72 @@ function registerIpcHandlers() {
     });
   });
 
+  ipcMain.handle('db:updateWidget', async (_, { id, dataSourceId, settings }) => {
+    return await prisma.widget.update({
+      where: { id },
+      data: {
+        dataSourceId,
+        settings: settings ? JSON.stringify(settings) : undefined
+      }
+    });
+  });
+
+  // EDGES
+  ipcMain.handle('db:getEdges', async () => {
+    const container = await prisma.container.findFirst({ where: { type: 'canvas' } });
+    if (!container) return [];
+    return await prisma.edge.findMany({ where: { containerId: container.id } });
+  });
+
+  ipcMain.handle('db:createEdge', async (_, { source, target, sourceHandle, targetHandle }) => {
+    const container = await prisma.container.findFirst({ where: { type: 'canvas' } });
+    if (!container) throw new Error("No canvas container found");
+    
+    return await prisma.edge.create({
+      data: {
+        containerId: container.id,
+        source,
+        target,
+        sourceHandle,
+        targetHandle
+      }
+    });
+  });
+
+  ipcMain.handle('db:deleteEdge', async (_, { id }) => {
+    return await prisma.edge.delete({ where: { id } });
+  });
+
+  // CONTAINER SETTINGS (for persisting Viewport)
+  ipcMain.handle('db:getContainerSettings', async (_, { type }) => {
+    const container = await prisma.container.findFirst({ where: { type } });
+    if (!container) return null;
+    return container.settings ? JSON.parse(container.settings) : null;
+  });
+
+  ipcMain.handle('db:updateContainerSettings', async (_, { type, settings }) => {
+    const user = await prisma.user.findFirst();
+    if (!user) throw new Error("No user found");
+
+    let container = await prisma.container.findFirst({ where: { type } });
+    if (!container) {
+      container = await prisma.container.create({
+        data: {
+          userId: user.id,
+          title: `Main ${type}`,
+          type,
+          settings: JSON.stringify(settings)
+        }
+      });
+    } else {
+      await prisma.container.update({
+        where: { id: container.id },
+        data: { settings: JSON.stringify(settings) }
+      });
+    }
+    return true;
+  });
+
   // EVENTS (CALENDAR)
   ipcMain.handle('db:getEvents', async () => {
     return await prisma.event.findMany({
@@ -234,7 +449,7 @@ function registerIpcHandlers() {
     });
   });
 
-  ipcMain.handle('db:createEvent', async (_, { title, start, end, allDay, description }) => {
+  ipcMain.handle('db:createEvent', async (_, { title, start, end, allDay, description, color }) => {
     const user = await prisma.user.findFirst();
     if (!user) throw new Error("No user found");
     
@@ -245,9 +460,119 @@ function registerIpcHandlers() {
         start,
         end,
         allDay: allDay || false,
-        description
+        description,
+        color: color || '#6366f1'
       }
     });
+  });
+
+  ipcMain.handle('db:updateEvent', async (_, { id, ...data }) => {
+    return await prisma.event.update({
+      where: { id },
+      data
+    });
+  });
+
+  ipcMain.handle('db:deleteEvent', async (_, { id }) => {
+    try {
+      // 1. Delete any widgets linked to this event
+      await prisma.widget.deleteMany({
+        where: { dataSourceId: id }
+      });
+
+      // 2. Delete the event itself
+      return await prisma.event.delete({
+        where: { id }
+      });
+    } catch (e: any) {
+      // Ignore "Record not found" errors to prevent frontend crashes
+      if (e.code === 'P2025') {
+        return null;
+      }
+      throw e;
+    }
+  });
+
+  // HABITS
+  ipcMain.handle('db:getHabits', async () => {
+    const habits = await prisma.habit.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const habitIds = habits.map(h => h.id);
+    const widgets = await prisma.widget.findMany({
+        where: { dataSourceId: { in: habitIds } },
+        include: { container: true }
+    });
+
+    return habits.map(habit => {
+        const linkedWidgets = widgets.filter(w => w.dataSourceId === habit.id);
+        return {
+            ...habit,
+            usedIn: linkedWidgets.map(w => ({
+                widgetId: w.id,
+                containerType: w.container.type,
+                containerTitle: w.container.title
+            }))
+        };
+    });
+  });
+
+  ipcMain.handle('db:createHabit', async (_, { title, description, frequency }) => {
+    const user = await prisma.user.findFirst();
+    if (!user) throw new Error("No user found");
+    
+    return await prisma.habit.create({
+      data: {
+        userId: user.id,
+        title,
+        description,
+        frequency: frequency || 'daily',
+        completedDates: '[]' // Initialize with empty array
+      }
+    });
+  });
+
+  ipcMain.handle('db:updateHabit', async (_, { id, ...data }) => {
+    return await prisma.habit.update({
+      where: { id },
+      data
+    });
+  });
+
+  ipcMain.handle('db:deleteHabit', async (_, { id }) => {
+    // Also delete any widgets linked to this habit
+    await prisma.widget.deleteMany({
+      where: { dataSourceId: id }
+    });
+
+    return await prisma.habit.delete({
+      where: { id }
+    });
+  });
+
+  // RECENT ITEMS API
+  ipcMain.handle('db:getRecentItems', async (_, { type, limit = 3 }) => {
+    const l = limit || 3;
+    switch (type) {
+      case 'note':
+        return await prisma.note.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: l
+        });
+      case 'habit':
+        return await prisma.habit.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: l
+        });
+      case 'event':
+        return await prisma.event.findMany({
+          orderBy: { createdAt: 'desc' }, // Recently created events
+          take: l
+        });
+      default:
+        return [];
+    }
   });
 
   log("IPC handlers registered.");
@@ -270,8 +595,6 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     log("Window ready to show");
     mainWindow.show()
-    // TEMPORARY: Open DevTools to debug white screen
-    mainWindow.webContents.openDevTools();
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -292,6 +615,7 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.electron')
 
   try {
+    await runMigrations();
     await ensureUser();
     registerIpcHandlers();
 

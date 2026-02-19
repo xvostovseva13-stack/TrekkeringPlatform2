@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Row, Col, Card, Form, Button, CloseButton } from 'react-bootstrap';
-import { HiOutlineTrash, HiOutlineMapPin } from 'react-icons/hi2';
-import { useToolbarActions } from '../context/ToolbarActionContext';
+import { Row, Col, Card, Form, Button, CloseButton, Badge } from 'react-bootstrap';
+import { HiOutlineTrash, HiOutlineMapPin, HiOutlineMap } from 'react-icons/hi2';
 import { handleNoteKeyDown } from '../utils/editorUtils';
 
 const COLORS = [
@@ -14,7 +13,6 @@ const COLORS = [
 ];
 
 const NotesPage = () => {
-  const { setNoteAction } = useToolbarActions();
   const [notes, setNotes] = useState<any[]>([]);
   
   // Editor State
@@ -40,18 +38,6 @@ const NotesPage = () => {
   useEffect(() => {
     loadNotes();
   }, []);
-
-  // Register Global Toolbar Action
-  useEffect(() => {
-    setNoteAction(() => () => {
-      setIsCreating(true);
-      setExpandedId(null);
-      setEditTitle('');
-      setEditContent('');
-      setEditColor(COLORS[0]);
-    });
-    return () => setNoteAction(null);
-  }, [setNoteAction]);
 
   // Sync state when expanding a note
   useEffect(() => {
@@ -132,8 +118,8 @@ const NotesPage = () => {
         <h2>All Notes</h2>
       </div>
 
-      <div className="flex-grow-1 overflow-auto pb-4">
-        <Row className="g-3">
+      <div className="flex-grow-1 overflow-y-auto overflow-x-hidden pb-4">
+        <Row className="g-3 m-0">
             {notes.map(note => (
               <Col key={note.id} xs={12} sm={6} md={4} lg={3} xl={2}>
                 <Card 
@@ -154,11 +140,22 @@ const NotesPage = () => {
                     >
                       {note.content}
                     </div>
-                    {note.resourceType && (
-                        <div className="mt-2 text-end">
-                            <span className="badge bg-dark bg-opacity-10 text-dark small">
-                                {note.resourceType}
-                            </span>
+                    
+                    {/* Usage Indicators */}
+                    {note.usedIn && note.usedIn.length > 0 && (
+                        <div className="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-black border-opacity-10 flex-wrap">
+                            {note.usedIn.map((usage: any, idx: number) => (
+                                <Badge 
+                                    key={idx} 
+                                    bg="light" 
+                                    text="dark"
+                                    className="fw-normal d-flex align-items-center gap-1 border border-secondary border-opacity-25"
+                                    style={{ fontSize: '0.6rem' }}
+                                >
+                                    {usage.containerType === 'canvas' && <HiOutlineMap size={10} />}
+                                    {usage.containerType === 'canvas' ? 'Canvas' : usage.containerType}
+                                </Badge>
+                            ))}
                         </div>
                     )}
                   </Card.Body>

@@ -17,6 +17,11 @@ out/
 .env.local
 *.log
 
+# Базы данных (SQLite)
+*.db
+*.db-journal
+*.sqlite
+
 # Системные файлы
 .DS_Store
 Thumbs.db

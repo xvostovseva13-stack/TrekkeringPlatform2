@@ -34,12 +34,14 @@ model Container {
   
   title     String
   type      String   // "dashboard", "canvas", "page"
+  settings  String?  // JSON stringified settings (e.g., viewport)
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime? // Soft delete
 
   widgets   Widget[]
+  edges     Edge[]
 }
 
 model Widget {
@@ -63,6 +65,20 @@ model Widget {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
+}
+
+model Edge {
+  id          String   @id @default(cuid())
+  containerId String
+  container   Container @relation(fields: [containerId], references: [id])
+  
+  source      String
+  target      String
+  sourceHandle String?
+  targetHandle String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // --- Feature Entities (Data) ---
@@ -127,6 +143,7 @@ model Event {
   end         DateTime
   allDay      Boolean  @default(false)
   description String?
+  color       String   @default("#6366f1") // Default Indigo
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
