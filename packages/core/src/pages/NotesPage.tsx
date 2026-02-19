@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Row, Col, Card, Form, Button, CloseButton, Badge } from 'react-bootstrap';
 import { HiOutlineTrash, HiOutlineMapPin, HiOutlineMap } from 'react-icons/hi2';
 import { handleNoteKeyDown } from '../utils/editorUtils';
+import { useApi } from '../context/ApiContext';
 
 const COLORS = [
   '#fff9c4', // Yellow
@@ -13,6 +14,7 @@ const COLORS = [
 ];
 
 const NotesPage = () => {
+  const api = useApi();
   const [notes, setNotes] = useState<any[]>([]);
   
   // Editor State
@@ -25,19 +27,17 @@ const NotesPage = () => {
 
   // Load notes
   const loadNotes = async () => {
-    if (window.electron && window.electron.db) {
-      try {
-        const data = await window.electron.db.getNotes(); // Get ALL notes
-        setNotes(data);
-      } catch (e) {
-        console.error("Failed to load notes", e);
-      }
+    try {
+      const data = await api.notes.getAll(); // Get ALL notes
+      setNotes(data);
+    } catch (e) {
+      console.error("Failed to load notes", e);
     }
   };
 
   useEffect(() => {
     loadNotes();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync state when expanding a note
   useEffect(() => {
@@ -54,11 +54,10 @@ const NotesPage = () => {
 
   const handleSave = async () => {
     if (!editTitle) return;
-    if (!window.electron) return;
 
     if (expandedId) {
       // Update
-      await window.electron.db.updateNote({
+      await api.notes.update({
         id: expandedId,
         title: editTitle,
         content: editContent,
@@ -66,7 +65,7 @@ const NotesPage = () => {
       });
     } else {
       // Create
-      await window.electron.db.createNote({
+      await api.notes.create({
         title: editTitle,
         content: editContent,
         color: editColor
@@ -78,21 +77,21 @@ const NotesPage = () => {
   };
 
   const handleDelete = async () => {
-    if (!expandedId || !window.electron) return;
+    if (!expandedId) return;
     if (confirm('Delete this note?')) {
-      await window.electron.db.deleteNote({ id: expandedId });
+      await api.notes.delete({ id: expandedId });
       closeEditor();
       loadNotes();
     }
   };
 
   const handlePinToCanvas = async () => {
-    if (!expandedId || !window.electron) return;
+    if (!expandedId) return;
     const note = notes.find(n => n.id === expandedId);
     if (!note) return;
 
     try {
-      await window.electron.db.createWidget({
+      await api.widgets.create({
         type: 'note',
         position: { x: 100, y: 100 },
         settings: { title: note.title },

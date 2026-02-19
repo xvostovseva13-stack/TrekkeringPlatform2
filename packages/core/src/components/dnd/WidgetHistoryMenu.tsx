@@ -5,6 +5,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import dayjs from 'dayjs';
 import { HiOutlineClock } from 'react-icons/hi2';
+import { useApi } from '../../context/ApiContext';
 
 interface RecentItem {
   id: string;
@@ -59,24 +60,23 @@ const HistoryItem = ({ item, type }: { item: RecentItem, type: string }) => {
 };
 
 export const WidgetHistoryMenu = ({ show, onClose, anchorPosition, type }: WidgetHistoryMenuProps) => {
+  const api = useApi();
   const [items, setItems] = useState<RecentItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (show && type) {
       setLoading(true);
-      if (window.electron) {
-        window.electron.db.getRecentItems({ type, limit: 3 })
-          .then((data: any) => setItems(data))
-          .catch((err: any) => console.error("Failed to fetch recent items", err))
-          .finally(() => setLoading(false));
-      }
+      api.widgets.getRecent({ type, limit: 3 })
+        .then((data: any) => setItems(data))
+        .catch((err: any) => console.error("Failed to fetch recent items", err))
+        .finally(() => setLoading(false));
     }
-  }, [show, type]);
+  }, [show, type, api]);
 
   // Close when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = () => {
       // Logic handled by parent or overlay usually, but simple check:
       if (show) {
           // If the click is not on the menu...

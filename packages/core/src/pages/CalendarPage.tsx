@@ -10,6 +10,7 @@ import YearView from '../features/calendar/YearView';
 import DayView from '../features/calendar/DayView';
 import { EventModal } from '../features/calendar/EventModal';
 import { emitTrekkerEvent, useTrekkerEvent } from '../utils/eventBus';
+import { useApi } from '../context/ApiContext';
 
 type ViewType = 'year' | 'month' | 'day';
 
@@ -18,6 +19,7 @@ const COLORS = [
 ];
 
 const CalendarPage = () => {
+  const api = useApi();
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState<ViewType>('month');
   
@@ -38,9 +40,8 @@ const CalendarPage = () => {
   // --- Data Loading ---
 
   const fetchEvents = useCallback(async () => {
-    if (!window.electron) return;
     try {
-      const rawEvents = await window.electron.db.getEvents();
+      const rawEvents = await api.events.getAll();
       // Convert to Date objects
       const formatted = rawEvents.map((e: any) => ({
         ...e,
@@ -51,17 +52,15 @@ const CalendarPage = () => {
     } catch (e) {
       console.error("Failed to load events", e);
     }
-  }, []);
+  }, [api]);
 
   const fetchNotes = useCallback(async () => {
-    if (!window.electron) return;
-    
     // Always fetch notes for the whole year to display in the categorized panel
     const startOfYear = dayjs(date).startOf('year').toDate();
     const endOfYear = dayjs(date).endOf('year').toDate();
     
     try {
-      const data = await window.electron.db.getNotes({
+      const data = await api.notes.getAll({
         start: startOfYear,
         end: endOfYear
       });
@@ -69,7 +68,7 @@ const CalendarPage = () => {
     } catch (e) {
       console.error("Failed to load notes", e);
     }
-  }, [date]);
+  }, [date, api]);
 
   useEffect(() => {
     fetchEvents();
@@ -107,12 +106,12 @@ const CalendarPage = () => {
 
   // Create Context Note
   const handleCreateNote = async () => {
-    if (!newNoteTitle || !window.electron) return;
+    if (!newNoteTitle) return;
     
     const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view === 'month' ? 'month' : 'day').toDate();
     
     try {
-      await window.electron.db.createNote({
+      await api.notes.create({
         title: newNoteTitle,
         content: newNoteContent,
         color: newNoteColor,
@@ -123,7 +122,6 @@ const CalendarPage = () => {
       setShowNoteModal(false);
       setNewNoteTitle('');
       setNewNoteContent('');
-      // fetchNotes(); // Handled by event bus
     } catch (e) {
       console.error(e);
       alert('Failed to create note');
@@ -131,17 +129,13 @@ const CalendarPage = () => {
   };
 
   const handleUpdateNote = async (note: any) => {
-    if (!window.electron) return;
-    await window.electron.db.updateNote(note);
+    await api.notes.update(note);
     emitTrekkerEvent('NOTE_CHANGED');
-    // fetchNotes(); // Handled by event bus
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (!window.electron) return;
-    await window.electron.db.deleteNote({ id });
+    await api.notes.delete({ id });
     emitTrekkerEvent('NOTE_CHANGED');
-    // fetchNotes(); // Handled by event bus
   };
 
   // Calendar Event Logic
@@ -165,17 +159,14 @@ const CalendarPage = () => {
   };
 
   const handleSaveEvent = async (data: any) => {
-    if (!window.electron) return;
-
     try {
         if (data.id) {
-            await window.electron.db.updateEvent(data);
+            await api.events.update(data);
         } else {
-            await window.electron.db.createEvent(data);
+            await api.events.create(data);
         }
         emitTrekkerEvent('EVENT_CHANGED');
         setShowEventModal(false);
-        // fetchEvents(); // Handled by event bus
     } catch (e) {
         console.error(e);
         alert('Failed to save event');
@@ -190,11 +181,9 @@ const CalendarPage = () => {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (!window.electron) return;
     try {
-        await window.electron.db.deleteEvent({ id });
+        await api.events.delete({ id });
         emitTrekkerEvent('EVENT_CHANGED');
-        // fetchEvents(); // Handled by event bus
     } catch (e) {
         console.error("Failed to delete event", e);
     }
@@ -204,8 +193,6 @@ const CalendarPage = () => {
   useEffect(() => {
     const handleDrop = async (e: CustomEvent) => {
       const { type, data } = e.detail;
-      const electron = window.electron;
-      if (!electron) return;
 
       if (type === 'event') {
         console.log("CALENDAR: Event dropped!");
@@ -215,15 +202,11 @@ const CalendarPage = () => {
         handleAddEventFromDayView(start);
       } else if (type === 'note') {
         console.log("CALENDAR: Note dropped!");
-        // Create a note linked to the current view context
-        // If in Month view -> link to that month? Or day?
-        // Let's assume drop means "add to current view context".
-        // If view is Day -> add to Day. If Month -> add to Month.
         
         const resourceDate = dayjs(date).startOf(view === 'year' ? 'year' : view === 'month' ? 'month' : 'day').toDate();
         
         try {
-            await electron.db.createNote({
+            await api.notes.create({
                 title: 'New Note',
                 content: '',
                 color: data.color || '#fff9c4',
@@ -231,7 +214,6 @@ const CalendarPage = () => {
                 resourceDate: resourceDate
             });
             emitTrekkerEvent('NOTE_CHANGED');
-            // fetchNotes(); // Handled by event bus
         } catch (err) {
             console.error("Failed to create dropped note", err);
         }
@@ -240,7 +222,7 @@ const CalendarPage = () => {
 
     window.addEventListener('widget-drop', handleDrop as unknown as EventListener);
     return () => window.removeEventListener('widget-drop', handleDrop as unknown as EventListener);
-  }, [date, view, fetchNotes]); // Added fetchNotes to deps
+  }, [date, view, api]); // Added api to deps
 
   return (
     <div className="h-100 d-flex flex-column bg-white">

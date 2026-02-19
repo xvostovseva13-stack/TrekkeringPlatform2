@@ -24,6 +24,7 @@ import { EventModal } from '../features/calendar/EventModal';
 import { HabitModal } from '../features/habits/HabitModal';
 import { NoteModal } from '../components/canvas/NoteModal';
 import { emitTrekkerEvent, useTrekkerEvent } from '../utils/eventBus';
+import { useApi } from '../context/ApiContext';
 
 // Define custom node types
 const nodeTypes = {
@@ -33,6 +34,7 @@ const nodeTypes = {
 };
 
 const CanvasInner = () => {
+  const api = useApi();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [activeTool, setActiveTool] = useState<CanvasTool>('cursor');
@@ -52,16 +54,13 @@ const CanvasInner = () => {
   const [editingNote, setEditingNote] = useState<any | null>(null);
 
   const handleDeleteNode = useCallback(async (id: string) => {
-    const electron = window.electron;
-    if (electron && electron.db) {
-      try {
-        await electron.db.deleteWidget({ id });
-        setNodes((nds) => nds.filter((node) => node.id !== id));
-      } catch (error) {
-        console.error("Failed to delete widget:", error);
-      }
+    try {
+      await api.widgets.delete({ id });
+      setNodes((nds) => nds.filter((node) => node.id !== id));
+    } catch (error) {
+      console.error("Failed to delete widget:", error);
     }
-  }, [setNodes]);
+  }, [setNodes, api]);
 
   const handleEditEventWidget = useCallback((widgetId: string) => {
     setNodes((currentNodes) => {
@@ -109,90 +108,87 @@ const CanvasInner = () => {
   }, [setNodes]);
 
   const loadCanvasData = useCallback(async () => {
-    const electron = window.electron;
-    if (electron && electron.db) {
-      try {
-        // Load Viewport
-        const settings = await electron.db.getContainerSettings({ type: 'canvas' });
-        if (settings && settings.viewport) {
-          setTimeout(() => {
-            setViewport(settings.viewport, { duration: 0 });
-          }, 50);
-        }
-
-        // Load Widgets
-        const widgets = await electron.db.getWidgets();
-        
-        const flowNodes: Node[] = widgets.map((w: any) => {
-          const position = JSON.parse(w.position);
-          const settings = JSON.parse(w.settings || '{}');
-          
-          let data: any = {
-             id: w.id, // Widget ID
-             label: w.data?.title || settings.title || 'Untitled',
-             onDelete: handleDeleteNode,
-             dataSourceId: w.dataSourceId,
-             // Common edit handler might be overwritten below
-          };
-
-          if (w.type === 'note') {
-             data = { 
-               ...data, 
-               content: w.data?.content || '', 
-               color: w.data?.color || '#fff9c4',
-               onEdit: handleEditNoteWidget 
-             };
-          } else if (w.type === 'event') {
-             data = { 
-                ...data, 
-                color: w.data?.color || '#6366f1',
-                start: w.data?.start,
-                end: w.data?.end,
-                allDay: w.data?.allDay,
-                onEdit: handleEditEventWidget
-             };
-          } else if (w.type === 'habit') {
-              data = {
-                  ...data,
-                  onEdit: handleEditHabitWidget // Specific handler for habits
-              };
-          }
-          
-          return {
-            id: w.id,
-            type: w.type, 
-            position: position,
-            data
-          };
-        });
-
-        // Load Edges
-        const dbEdges = await electron.db.getEdges();
-        const flowEdges = dbEdges.map((e: any) => {
-           const mapHandle = (h: string | null) => {
-             if (h === 'top') return 't-t';
-             if (h === 'bottom') return 'b-s';
-             if (h === 'left') return 'l-t';
-             if (h === 'right') return 'r-s';
-             return h;
-           };
-
-           return {
-             id: e.id,
-             source: e.source,
-             target: e.target,
-             sourceHandle: mapHandle(e.sourceHandle),
-             targetHandle: mapHandle(e.targetHandle),
-           };
-         });
-
-        setNodes(flowNodes);
-        setEdges(flowEdges);
-      } catch (e) {
-        console.error("Failed to load canvas data", e);
+    try {
+      // Load Viewport
+      const settings = await api.containers.getSettings({ type: 'canvas' });
+      if (settings && settings.viewport) {
+        setTimeout(() => {
+          setViewport(settings.viewport, { duration: 0 });
+        }, 50);
       }
+
+      // Load Widgets
+      const widgets = await api.widgets.getAll();
+      
+      const flowNodes: Node[] = widgets.map((w: any) => {
+        const position = JSON.parse(w.position);
+        const settings = JSON.parse(w.settings || '{}');
+        
+        let data: any = {
+           id: w.id, // Widget ID
+           label: w.data?.title || settings.title || 'Untitled',
+           onDelete: handleDeleteNode,
+           dataSourceId: w.dataSourceId,
+           // Common edit handler might be overwritten below
+        };
+
+        if (w.type === 'note') {
+           data = { 
+             ...data, 
+             content: w.data?.content || '', 
+             color: w.data?.color || '#fff9c4',
+             onEdit: handleEditNoteWidget 
+           };
+        } else if (w.type === 'event') {
+           data = { 
+              ...data, 
+              color: w.data?.color || '#6366f1',
+              start: w.data?.start,
+              end: w.data?.end,
+              allDay: w.data?.allDay,
+              onEdit: handleEditEventWidget
+           };
+        } else if (w.type === 'habit') {
+            data = {
+                ...data,
+                onEdit: handleEditHabitWidget // Specific handler for habits
+            };
+        }
+        
+        return {
+          id: w.id,
+          type: w.type, 
+          position: position,
+          data
+        };
+      });
+
+      // Load Edges
+      const dbEdges = await api.edges.getAll();
+      const flowEdges = dbEdges.map((e: any) => {
+         const mapHandle = (h: string | null) => {
+           if (h === 'top') return 't-t';
+           if (h === 'bottom') return 'b-s';
+           if (h === 'left') return 'l-t';
+           if (h === 'right') return 'r-s';
+           return h;
+         };
+
+         return {
+           id: e.id,
+           source: e.source,
+           target: e.target,
+           sourceHandle: mapHandle(e.sourceHandle),
+           targetHandle: mapHandle(e.targetHandle),
+         };
+       });
+
+      setNodes(flowNodes);
+      setEdges(flowEdges);
+    } catch (e) {
+      console.error("Failed to load canvas data", e);
     }
-  }, [setNodes, setEdges, setViewport, handleDeleteNode, handleEditEventWidget, handleEditHabitWidget, handleEditNoteWidget]);
+  }, [setNodes, setEdges, setViewport, handleDeleteNode, handleEditEventWidget, handleEditHabitWidget, handleEditNoteWidget, api]);
 
   // Subscribe to Event Bus
   useTrekkerEvent('EVENT_CHANGED', () => {
@@ -211,11 +207,14 @@ const CanvasInner = () => {
   });
 
   const handleSaveEvent = async (data: any) => {
-    if (!window.electron) return;
     try {
         console.log("CANVAS: Saving event data", data);
-        await window.electron.db.updateEvent(data);
-        emitTrekkerEvent('EVENT_CHANGED'); // Notify others (and self via listener)
+        if (data.id) {
+            await api.events.update(data);
+        } else {
+            await api.events.create(data);
+        }
+        emitTrekkerEvent('EVENT_CHANGED'); 
         setShowEventModal(false);
     } catch (e) {
         console.error("CANVAS: Failed to save event", e);
@@ -223,21 +222,18 @@ const CanvasInner = () => {
   };
   
   const handleDeleteEvent = async (id: string) => {
-      if (window.electron) {
-          console.log("CANVAS: Deleting event", id);
-          await window.electron.db.deleteEvent({ id });
-          emitTrekkerEvent('EVENT_CHANGED'); // Notify others
-      }
+      console.log("CANVAS: Deleting event", id);
+      await api.events.delete({ id });
+      emitTrekkerEvent('EVENT_CHANGED'); 
       setShowEventModal(false);
   };
 
   const handleSaveHabit = async (habitData: any) => {
-      if (!window.electron) return;
       try {
           let habitId = habitData.id;
           if (habitId) {
               // Update
-              await window.electron.db.updateHabit({
+              await api.habits.update({
                   id: habitData.id,
                   title: habitData.title,
                   description: habitData.description,
@@ -245,7 +241,7 @@ const CanvasInner = () => {
               });
           } else {
               // Create
-              const newHabit = await window.electron.db.createHabit({
+              const newHabit = await api.habits.create({
                   title: habitData.title,
                   description: habitData.description,
                   frequency: habitData.frequency || 'daily'
@@ -255,7 +251,7 @@ const CanvasInner = () => {
 
           // If this was triggered by "Create New" on a widget, link it
           if (targetWidgetId && !habitData.id) { // Only link if it was a NEW creation
-               await window.electron.db.updateWidget({
+               await api.widgets.update({
                    id: targetWidgetId,
                    dataSourceId: habitId,
                    settings: { title: 'Habit Tracker' }
@@ -272,18 +268,19 @@ const CanvasInner = () => {
   };
   
   const handleDeleteHabit = async (id: string) => {
-      if (window.electron) {
-          await window.electron.db.deleteHabit({ id });
-          emitTrekkerEvent('HABIT_CHANGED');
-      }
+      await api.habits.delete({ id });
+      emitTrekkerEvent('HABIT_CHANGED');
       setShowHabitModal(false);
   };
 
   const handleSaveNote = async (data: any) => {
-    if (!window.electron) return;
     try {
         console.log("CANVAS: Saving note data", data);
-        await window.electron.db.updateNote(data);
+        if (data.id) {
+            await api.notes.update(data);
+        } else {
+            await api.notes.create(data);
+        }
         emitTrekkerEvent('NOTE_CHANGED'); 
         setShowNoteModal(false);
     } catch (e) {
@@ -292,13 +289,9 @@ const CanvasInner = () => {
   };
 
   const handleDeleteNoteFromModal = async (id: string) => {
-    if (window.electron) {
-        console.log("CANVAS: Deleting note", id);
-        // Note: We might want to just delete the widget or the note itself.
-        // Usually, deleting the note via modal implies deleting the data.
-        await window.electron.db.deleteNote({ id });
-        emitTrekkerEvent('NOTE_CHANGED'); 
-    }
+    console.log("CANVAS: Deleting note", id);
+    await api.notes.delete({ id });
+    emitTrekkerEvent('NOTE_CHANGED'); 
     setShowNoteModal(false);
   };
 
@@ -311,8 +304,6 @@ const CanvasInner = () => {
   useEffect(() => {
     const handleDrop = async (e: CustomEvent) => {
       const { type, data, finalPosition } = e.detail;
-      const electron = window.electron;
-      if (!electron) return;
 
       // Convert screen coordinates to Flow coordinates
       const position = screenToFlowPosition({ 
@@ -328,7 +319,7 @@ const CanvasInner = () => {
 
          if (!isHistory) {
              // Create New Note
-             const newNote = await electron.db.createNote({
+             const newNote = await api.notes.create({
                 title: 'New Note',
                 content: '',
                 color: data.color || '#fff9c4'
@@ -337,7 +328,7 @@ const CanvasInner = () => {
          }
 
          // Create Widget
-         await electron.db.createWidget({
+         await api.widgets.create({
             type: 'note',
             position: position,
             dataSourceId: dataSourceId,
@@ -353,7 +344,7 @@ const CanvasInner = () => {
              const start = dayjs().hour(12).minute(0).toDate();
              const end = dayjs().hour(13).minute(0).toDate();
              
-             const newEvent = await electron.db.createEvent({
+             const newEvent = await api.events.create({
                 title: 'New Event',
                 start,
                 end,
@@ -364,7 +355,7 @@ const CanvasInner = () => {
          }
 
          // Create Widget
-         await electron.db.createWidget({
+         await api.widgets.create({
             type: 'event',
             position: position,
             dataSourceId: dataSourceId,
@@ -375,10 +366,7 @@ const CanvasInner = () => {
 
       } else if (type === 'habit') {
           // Create Widget
-          // If history, we have originalId to link immediately
-          // If new, we create unlinked widget and open modal
-          
-          const newWidget = await electron.db.createWidget({
+          const newWidget = await api.widgets.create({
               type: 'habit',
               position: position,
               dataSourceId: isHistory ? originalId : undefined,
@@ -397,59 +385,50 @@ const CanvasInner = () => {
 
     window.addEventListener('widget-drop', handleDrop as unknown as EventListener);
     return () => window.removeEventListener('widget-drop', handleDrop as unknown as EventListener);
-  }, [screenToFlowPosition, loadCanvasData]);
+  }, [screenToFlowPosition, loadCanvasData, api, handleEditHabitWidget]);
 
   const onConnect = useCallback(
     async (params: Connection) => {
-      const electron = window.electron;
-      if (electron && electron.db) {
-        try {
-          const newEdge = await electron.db.createEdge({
-            source: params.source,
-            target: params.target,
-            sourceHandle: params.sourceHandle ?? undefined,
-            targetHandle: params.targetHandle ?? undefined
-          });
-          
-          setEdges((eds) => addEdge({ ...params, id: newEdge.id }, eds));
-        } catch (e) {
-          console.error("Failed to save edge", e);
-          setEdges((eds) => addEdge(params, eds));
-        }
+      try {
+        const newEdge = await api.edges.create({
+          source: params.source,
+          target: params.target,
+          sourceHandle: params.sourceHandle ?? undefined,
+          targetHandle: params.targetHandle ?? undefined
+        });
+        
+        setEdges((eds) => addEdge({ ...params, id: newEdge.id }, eds));
+      } catch (e) {
+        console.error("Failed to save edge", e);
+        setEdges((eds) => addEdge(params, eds));
       }
     },
-    [setEdges],
+    [setEdges, api],
   );
 
   const onEdgesDelete = useCallback(
     async (edgesToDelete: any[]) => {
-      const electron = window.electron;
-      if (electron && electron.db) {
-        for (const edge of edgesToDelete) {
-          try {
-            await electron.db.deleteEdge({ id: edge.id });
-          } catch (e) {
-            console.error("Failed to delete edge from DB", e);
-          }
+      for (const edge of edgesToDelete) {
+        try {
+          await api.edges.delete({ id: edge.id });
+        } catch (e) {
+          console.error("Failed to delete edge from DB", e);
         }
       }
     },
-    []
+    [api]
   );
 
   const onEdgeDoubleClick = useCallback(
     async (_: React.MouseEvent, edge: Edge) => {
-      const electron = window.electron;
-      if (electron && electron.db) {
-        try {
-          await electron.db.deleteEdge({ id: edge.id });
-          setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-        } catch (e) {
-          console.error("CANVAS: Failed to delete edge via double-click", e);
-        }
+      try {
+        await api.edges.delete({ id: edge.id });
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      } catch (e) {
+        console.error("CANVAS: Failed to delete edge via double-click", e);
       }
     },
-    [setEdges]
+    [setEdges, api]
   );
 
   const onNodeDragStart = useCallback(
@@ -466,23 +445,17 @@ const CanvasInner = () => {
 
   const onNodeDragStop = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      const electron = window.electron;
-      if (electron && electron.db) {
-        electron.db.updateWidgetPosition(node.id, node.position);
-      }
+      api.widgets.updatePosition(node.id, node.position);
     },
-    []
+    [api]
   );
 
   const onMoveEnd = useCallback((_: any, viewport: any) => {
-    const electron = window.electron;
-    if (electron && electron.db) {
-      electron.db.updateContainerSettings({ 
-        type: 'canvas', 
-        settings: { viewport } 
-      });
-    }
-  }, []);
+    api.containers.updateSettings({ 
+      type: 'canvas', 
+      settings: { viewport } 
+    });
+  }, [api]);
 
   return (
     <div className="h-100 bg-light rounded-3 shadow-sm border overflow-hidden position-relative">

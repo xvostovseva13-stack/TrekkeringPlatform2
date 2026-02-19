@@ -8,6 +8,7 @@ import HabitsPage from './pages/HabitsPage';
 import { useEffect } from 'react';
 import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { DragOverlayWrapper } from './components/dnd/DragOverlayWrapper';
+import { ApiProvider } from './context/ApiContext';
 
 // Placeholder Pages (will be moved to separate files later)
 const Dashboard = () => <Card className="p-4 shadow-sm border-0"><h1>Dashboard</h1><p className="text-muted">Welcome to your Trekker Platform.</p></Card>;
@@ -51,20 +52,22 @@ function App() {
   };
 
   return (
-    <DndContext onDragEnd={handleDragEnd}>
-      <MainLayout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/canvas" element={<CanvasPage />} />
-          <Route path="/notes" element={<NotesPage />} />
-          <Route path="/habits" element={<HabitsPage />} />
-          <Route path="/finances" element={<Finances />} />
-          <Route path="/goals" element={<Goals />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-        </Routes>
-      </MainLayout>
-      <DragOverlayWrapper />
-    </DndContext>
+    <ApiProvider>
+      <DndContext onDragEnd={handleDragEnd}>
+        <MainLayout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/canvas" element={<CanvasPage />} />
+            <Route path="/notes" element={<NotesPage />} />
+            <Route path="/habits" element={<HabitsPage />} />
+            <Route path="/finances" element={<Finances />} />
+            <Route path="/goals" element={<Goals />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+          </Routes>
+        </MainLayout>
+        <DragOverlayWrapper />
+      </DndContext>
+    </ApiProvider>
   );
 }
 

@@ -5,8 +5,10 @@ import dayjs from 'dayjs';
 import HabitCard from '../features/habits/HabitCard';
 import HabitsSummary from '../features/habits/HabitsSummary';
 import { HabitModal } from '../features/habits/HabitModal';
+import { useApi } from '../context/ApiContext';
 
 const HabitsPage = () => {
+  const api = useApi();
   const [date, setDate] = useState(new Date()); // Current view date
   const [habits, setHabits] = useState<any[]>([]);
   
@@ -16,14 +18,13 @@ const HabitsPage = () => {
 
   // Load Data
   const fetchHabits = useCallback(async () => {
-    if (!window.electron) return;
     try {
-      const data = await window.electron.db.getHabits();
+      const data = await api.habits.getAll();
       setHabits(data);
     } catch (e) {
       console.error("Failed to load habits", e);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     fetchHabits();
@@ -31,11 +32,10 @@ const HabitsPage = () => {
 
   // Handlers
   const handleSave = async (habitData: any) => {
-    if (!window.electron) return;
     try {
       if (habitData.id) {
           // Update
-          await window.electron.db.updateHabit({
+          await api.habits.update({
               id: habitData.id,
               title: habitData.title,
               description: habitData.description,
@@ -43,7 +43,7 @@ const HabitsPage = () => {
           });
       } else {
           // Create
-          await window.electron.db.createHabit({
+          await api.habits.create({
               title: habitData.title,
               description: habitData.description,
               frequency: habitData.frequency || 'daily'
@@ -68,10 +68,9 @@ const HabitsPage = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.electron) return;
     // Confirmation handled in Modal usually, but if called from Card:
     if (confirm('Delete this habit?')) {
-        await window.electron.db.deleteHabit({ id });
+        await api.habits.delete({ id });
         fetchHabits();
         setShowModal(false); // Close modal if open
     }
@@ -79,15 +78,12 @@ const HabitsPage = () => {
   
   // Handled by modal for internal delete
   const handleDeleteFromModal = async (id: string) => {
-      if (!window.electron) return;
-      await window.electron.db.deleteHabit({ id });
+      await api.habits.delete({ id });
       fetchHabits();
       setShowModal(false);
   };
 
   const handleToggleDate = async (id: string, dateStr: string) => {
-    if (!window.electron) return;
-    
     const habit = habits.find(h => h.id === id);
     if (!habit) return;
 
@@ -107,7 +103,7 @@ const HabitsPage = () => {
     completedDates.sort();
 
     try {
-        await window.electron.db.updateHabit({
+        await api.habits.update({
             id,
             completedDates: JSON.stringify(completedDates)
         });

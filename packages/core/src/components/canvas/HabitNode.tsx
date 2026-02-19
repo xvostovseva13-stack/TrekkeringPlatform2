@@ -1,58 +1,42 @@
 import { memo, useState, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Card, Form, Button, Spinner, ProgressBar } from 'react-bootstrap';
+import { Card, Button, ProgressBar } from 'react-bootstrap';
 import { BsTrash } from 'react-icons/bs';
 import { HiCheck, HiFire, HiOutlinePlus, HiTrophy } from 'react-icons/hi2';
 import dayjs from 'dayjs';
 import clsx from 'clsx';
 import { useTrekkerEvent } from '../../utils/eventBus';
 import { isHabitRestDay, calculateHabitStats } from '../../utils/habitUtils';
+import { useApi } from '../../context/ApiContext';
 
 const HabitNode = ({ id, data }: NodeProps) => {
-  const [loading, setLoading] = useState(false);
-  const [habits, setHabits] = useState<any[]>([]);
+  const api = useApi();
   const [selectedHabit, setSelectedHabit] = useState<any | null>(null);
   const [isHovered, setIsHovered] = useState(false);
 
   const loadData = useCallback(async () => {
-    if (!window.electron) return;
     try {
         if (data.dataSourceId) {
-            const all = await window.electron.db.getHabits();
+            const all = await api.habits.getAll();
             const found = all.find((h: any) => h.id === data.dataSourceId);
             setSelectedHabit(found || null);
         } else {
-            const all = await window.electron.db.getHabits();
-            setHabits(all);
+            // Logic for 'unselected' node changed, we don't need all habits anymore
+            // const all = await api.habits.getAll();
+            // setHabits(all);
         }
     } catch (e) {
         console.error("Failed to load habit node data", e);
     }
-  }, [data.dataSourceId]);
+  }, [data.dataSourceId, api]);
 
   useEffect(() => {
-    setLoading(true);
-    loadData().finally(() => setLoading(false));
+    loadData();
   }, [loadData]);
 
   useTrekkerEvent('HABIT_CHANGED', () => {
       loadData();
   });
-
-  const handleSelect = async (habitId: string) => {
-    if (!window.electron) return;
-    try {
-        await window.electron.db.updateWidget({
-            id: id,
-            dataSourceId: habitId,
-            settings: { title: 'Habit Tracker' }
-        });
-        const habit = habits.find(h => h.id === habitId);
-        setSelectedHabit(habit);
-    } catch (e) {
-        console.error("Failed to link habit", e);
-    }
-  };
 
   const handleCreateNew = () => {
       if (data.onEdit && typeof data.onEdit === 'function') {
@@ -67,7 +51,7 @@ const HabitNode = ({ id, data }: NodeProps) => {
   };
 
   const handleToggleDate = async (dateStr: string) => {
-      if (!selectedHabit || !window.electron) return;
+      if (!selectedHabit) return;
       
       let completedDates: string[] = [];
       try {
@@ -84,7 +68,7 @@ const HabitNode = ({ id, data }: NodeProps) => {
       completedDates.sort();
 
       try {
-          await window.electron.db.updateHabit({
+          await api.habits.update({
               id: selectedHabit.id,
               completedDates: JSON.stringify(completedDates)
           });

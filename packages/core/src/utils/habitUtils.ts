@@ -62,9 +62,6 @@ export const calculateHabitStats = (habit: any) => {
   // If neither done, streak is 0 (unless today/yesterday are rest days?)
   // Logic: Allow "today" to be incomplete without breaking streak if "yesterday" was maintained.
   
-  let checkDate = dayjs();
-  const todayStr = checkDate.format('YYYY-MM-DD');
-  
   // If today is NOT completed, we tentatively look at yesterday to continue the streak.
   // BUT if today is a REST day, we just skip it.
   // If today is NOT a rest day and NOT completed -> Streak might be broken unless we allow "not done yet today".
@@ -72,7 +69,6 @@ export const calculateHabitStats = (habit: any) => {
   
   // Let's iterate backwards from Today until the chain breaks.
   let tempStreak = 0;
-  let gapFound = false;
   
   // Loop backwards from Today for a reasonable lookback (e.g., 365 days or until break)
   // Safety break: 1000 days
