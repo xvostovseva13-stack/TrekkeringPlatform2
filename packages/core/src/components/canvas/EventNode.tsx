@@ -1,11 +1,13 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Card } from 'react-bootstrap';
 import { HiOutlineCalendarDays, HiOutlineClock } from 'react-icons/hi2';
+import { BsTrash } from 'react-icons/bs';
 import dayjs from 'dayjs';
 
-const EventNode = ({ data }: NodeProps) => {
-  const { label, color, start, end, allDay, onEdit, id } = data;
+const EventNode = ({ id, data }: NodeProps) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const { label, color, start, end, allDay, onEdit, onDelete } = data;
   
   // Format date/time display
   const startDate = dayjs(start as string);
@@ -22,7 +24,15 @@ const EventNode = ({ data }: NodeProps) => {
 
   const handleDoubleClick = () => {
     if (onEdit && typeof onEdit === 'function') {
-        onEdit(id); // Pass widget ID (or dataSourceId if available in parent logic)
+        // @ts-ignore
+        onEdit(data.id); // Pass widget ID
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete && typeof onDelete === 'function') {
+      (onDelete as (id: string) => void)(id);
     }
   };
 
@@ -31,6 +41,8 @@ const EventNode = ({ data }: NodeProps) => {
       style={{ width: '220px', backgroundColor: (color as string) || '#6366f1', color: 'white', cursor: 'pointer' }} 
       className="shadow-sm border-0"
       onDoubleClick={handleDoubleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Handles for connecting */}
       <Handle type="target" position={Position.Top} id="t-t" className="w-16 !bg-white" />
@@ -42,10 +54,24 @@ const EventNode = ({ data }: NodeProps) => {
       <Handle type="target" position={Position.Right} id="r-t" className="w-16 !bg-white" />
       <Handle type="source" position={Position.Right} id="r-s" className="w-16 !bg-white" style={{ zIndex: 1 }} />
 
+      {/* Delete Button */}
+      {isHovered && (
+        <div 
+          className="position-absolute top-0 end-0 p-2 fade-in nodrag" 
+          style={{ zIndex: 10, cursor: 'pointer', opacity: 0.8 }}
+          onClick={handleDelete}
+          title="Remove from canvas"
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
+        >
+          <BsTrash size={16} color="white" />
+        </div>
+      )}
+
       <Card.Body className="p-2">
         <div className="d-flex align-items-center gap-2 mb-2 border-bottom border-white border-opacity-25 pb-2">
             <HiOutlineCalendarDays size={18} />
-            <span className="fw-bold text-truncate">{label as string}</span>
+            <span className="fw-bold text-truncate" style={{ maxWidth: isHovered ? '150px' : '100%' }}>{label as string}</span>
         </div>
         <div className="small opacity-90">
             <div className="fw-bold">{dateString}</div>

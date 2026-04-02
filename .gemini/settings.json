@@ -4,8 +4,11 @@
   },
   "ui": {
     "footer": {
-      "hideModelInfo": false
-    }
+      "hideModelInfo": false,
+      "hideContextPercentage": true
+    },
+    "inlineThinkingMode": "off",
+    "showStatusInTitle": true
   },
   "ide": {
     "enabled": true

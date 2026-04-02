@@ -65,7 +65,7 @@ const NoteNode = ({ id, data }: NodeProps) => {
 
       <Card.Body className="d-flex flex-column p-2">
         <h6 className="fw-bold mb-2 text-truncate">{title}</h6>
-        <div className="small text-muted flex-grow-1 text-break" style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+        <div className="small text-muted flex-grow-1 text-break" style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical' }}>
             {content || '(Double click to edit)'}
         </div>
       </Card.Body>

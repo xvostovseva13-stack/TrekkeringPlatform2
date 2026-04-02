@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Row, Col, Card, Form, Button, CloseButton, Badge } from 'react-bootstrap';
-import { HiOutlineTrash, HiOutlineMapPin, HiOutlineMap } from 'react-icons/hi2';
+import { HiOutlineTrash, HiOutlineMapPin, HiOutlineMap, HiOutlinePlus } from 'react-icons/hi2';
 import { handleNoteKeyDown } from '../utils/editorUtils';
 import { useApi } from '../context/ApiContext';
+import { emitTrekkerEvent } from '../utils/eventBus';
 
 const COLORS = [
   '#fff9c4', // Yellow
@@ -26,18 +27,40 @@ const NotesPage = () => {
   const [editColor, setEditColor] = useState(COLORS[0]);
 
   // Load notes
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     try {
       const data = await api.notes.getAll(); // Get ALL notes
       setNotes(data);
     } catch (e) {
       console.error("Failed to load notes", e);
     }
-  };
+  }, [api]);
 
   useEffect(() => {
     loadNotes();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadNotes]);
+
+  const handleCreateNew = useCallback((color?: string) => {
+    setExpandedId(null);
+    setEditTitle('');
+    setEditContent('');
+    setEditColor(color || COLORS[0]);
+    setIsCreating(true);
+  }, []);
+
+  // Listen for Drop Events (DnD)
+  useEffect(() => {
+    const handleDrop = async (e: CustomEvent) => {
+      const { type, data } = e.detail;
+      
+      if (type === 'note') {
+        handleCreateNew(data.color);
+      }
+    };
+
+    window.addEventListener('widget-drop', handleDrop as unknown as EventListener);
+    return () => window.removeEventListener('widget-drop', handleDrop as unknown as EventListener);
+  }, [handleCreateNew]);
 
   // Sync state when expanding a note
   useEffect(() => {
@@ -72,6 +95,7 @@ const NotesPage = () => {
       });
     }
     
+    emitTrekkerEvent('NOTE_CHANGED');
     closeEditor();
     loadNotes();
   };
@@ -80,6 +104,7 @@ const NotesPage = () => {
     if (!expandedId) return;
     if (confirm('Delete this note?')) {
       await api.notes.delete({ id: expandedId });
+      emitTrekkerEvent('NOTE_CHANGED');
       closeEditor();
       loadNotes();
     }
@@ -112,60 +137,68 @@ const NotesPage = () => {
   const isEditorOpen = expandedId || isCreating;
 
   return (
-    <div className="h-100 position-relative d-flex flex-column">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>All Notes</h2>
+    <div className="h-100 position-relative d-flex flex-column bg-light overflow-hidden">
+      {/* Page Header (Matching HabitsPage style) */}
+      <div className="bg-white border-bottom px-4 py-3 d-flex justify-content-between align-items-center shadow-sm">
+        <h4 className="m-0 fw-bold">Notes</h4>
+        <Button variant="primary" size="sm" onClick={() => handleCreateNew()}>
+            <HiOutlinePlus className="me-1" /> New Note
+        </Button>
       </div>
 
-      <div className="flex-grow-1 overflow-y-auto overflow-x-hidden pb-4">
-        <Row className="g-3 m-0">
-            {notes.map(note => (
-              <Col key={note.id} xs={12} sm={6} md={4} lg={3} xl={2}>
-                <Card 
-                  className="h-100 border-0 shadow-sm cursor-pointer hover-shadow transition-all"
-                  style={{ backgroundColor: note.color || '#fff9c4', minHeight: '150px', cursor: 'pointer' }}
-                  onClick={() => setExpandedId(note.id)}
-                >
-                  <Card.Body className="d-flex flex-column">
-                    <h6 className="fw-bold mb-2 text-truncate">{note.title}</h6>
-                    <div 
-                        className="text-muted small flex-grow-1" 
-                        style={{ 
-                           display: '-webkit-box', 
-                           WebkitLineClamp: 5, 
-                           WebkitBoxOrient: 'vertical', 
-                           overflow: 'hidden' 
-                        }}
+      <div className="flex-grow-1 overflow-y-auto overflow-x-hidden p-4">
+        <Row className="g-3 m-0 justify-content-center">
+          <Col xs={12} lg={11} xl={10}>
+            <Row className="g-3">
+                {notes.map(note => (
+                  <Col key={note.id} xs={12} sm={6} md={4} lg={3} xl={2}>
+                    <Card 
+                      className="h-100 border-0 shadow-sm cursor-pointer hover-shadow transition-all"
+                      style={{ backgroundColor: note.color || '#fff9c4', minHeight: '150px', cursor: 'pointer' }}
+                      onClick={() => setExpandedId(note.id)}
                     >
-                      {note.content}
-                    </div>
-                    
-                    {/* Usage Indicators */}
-                    {note.usedIn && note.usedIn.length > 0 && (
-                        <div className="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-black border-opacity-10 flex-wrap">
-                            {note.usedIn.map((usage: any, idx: number) => (
-                                <Badge 
-                                    key={idx} 
-                                    bg="light" 
-                                    text="dark"
-                                    className="fw-normal d-flex align-items-center gap-1 border border-secondary border-opacity-25"
-                                    style={{ fontSize: '0.6rem' }}
-                                >
-                                    {usage.containerType === 'canvas' && <HiOutlineMap size={10} />}
-                                    {usage.containerType === 'canvas' ? 'Canvas' : usage.containerType}
-                                </Badge>
-                            ))}
+                      <Card.Body className="d-flex flex-column">
+                        <h6 className="fw-bold mb-2 text-truncate">{note.title}</h6>
+                        <div 
+                            className="text-muted small flex-grow-1" 
+                            style={{ 
+                               display: '-webkit-box', 
+                               WebkitLineClamp: 5, 
+                               WebkitBoxOrient: 'vertical', 
+                               overflow: 'hidden' 
+                            }}
+                        >
+                          {note.content}
                         </div>
-                    )}
-                  </Card.Body>
-                </Card>
-              </Col>
-            ))}
+                        
+                        {/* Usage Indicators */}
+                        {note.usedIn && note.usedIn.length > 0 && (
+                            <div className="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-black border-opacity-10 flex-wrap">
+                                {note.usedIn.map((usage: any, idx: number) => (
+                                    <Badge 
+                                        key={idx} 
+                                        bg="light" 
+                                        text="dark"
+                                        className="fw-normal d-flex align-items-center gap-1 border border-secondary border-opacity-25"
+                                        style={{ fontSize: '0.6rem' }}
+                                    >
+                                        {usage.containerType === 'canvas' && <HiOutlineMap size={10} />}
+                                        {usage.containerType === 'canvas' ? 'Canvas' : usage.containerType}
+                                    </Badge>
+                                ))}
+                            </div>
+                        )}
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                ))}
+            </Row>
             {notes.length === 0 && (
                 <div className="text-center text-muted mt-5">
                     No notes found. Create one using the toolbar!
                 </div>
             )}
+          </Col>
         </Row>
       </div>
 
